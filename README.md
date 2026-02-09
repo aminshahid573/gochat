@@ -15,4 +15,4 @@ go run main.go
 
 ---
 video
-![Problem](./video/problem.mp4)
+https://github.com/user-attachments/assets/444de311-6dcd-43a7-bdf7-613c974f2f3c
