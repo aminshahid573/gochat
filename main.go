@@ -12,8 +12,8 @@ import (
 
 // UI Styles
 var (
-	// Removed bottom padding to eliminate gap below text field
-	appStyle = lipgloss.NewStyle().Padding(1, 2, 0, 2)
+	// Reduced horizontal padding to 0 to minimize sidebar margins as requested
+	appStyle = lipgloss.NewStyle().Padding(1, 0, 0, 0)
 
 	// Header Styles
 	logoStyle = lipgloss.NewStyle().
@@ -72,6 +72,20 @@ var (
 			BorderForeground(lipgloss.Color("212")). // Pink border
 			Padding(0, 1).
 			MarginTop(0)
+
+	// Sidebar Styles
+	// Added MarginTop(1) to align with Header
+	leftSidebarStyle = lipgloss.NewStyle().
+				Border(lipgloss.NormalBorder()).
+				BorderForeground(lipgloss.Color("240")).
+				Padding(0, 1).
+				MarginTop(1)
+
+	rightSidebarStyle = lipgloss.NewStyle().
+				Border(lipgloss.NormalBorder()).
+				BorderForeground(lipgloss.Color("240")).
+				Padding(0, 1).
+				MarginTop(1)
 )
 
 type model struct {
@@ -100,10 +114,14 @@ func initialModel() model {
 	ta.Placeholder = "Type a Message or command (use / for actions)"
 	ta.ShowLineNumbers = false
 	ta.SetHeight(1)
-
-	// We'll handle the prompt manually in the View
 	ta.Prompt = ""
 	ta.Focus() // Focus message input by default
+
+	// Clear default styles to remove "light white-grey focus"
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.FocusedStyle.Base = lipgloss.NewStyle()
+	ta.BlurredStyle.CursorLine = lipgloss.NewStyle()
+	ta.BlurredStyle.Base = lipgloss.NewStyle()
 
 	return model{
 		textInput:    ti,
@@ -136,16 +154,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.messageInput.Blur()
 				m.textInput.Focus()
 			}
-		case "enter":
-			if m.messageInput.Focused() {
-				// Handle dynamic height expansion
-				// If currently 1 line, allow expansion to 2.
-				// If 2 lines, submit (or stay at 2 if just typing)
-				// The textarea handles inserting the newline in the content.
-				// We just need to react to the new content size.
-				// However, bubbletea's textarea usually requires explicit height setting.
-				// We'll let the default update happen first to insert the char, then check line count.
-			}
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -177,6 +185,24 @@ func (m model) View() string {
 		return "Loading..."
 	}
 
+	// Sidebar Widths
+	// Fixed content width of 20
+	leftSidebarContentWidth := 20
+	rightSidebarContentWidth := 20
+	// Rendered width = Content + Border(2) + Padding(0) = 22
+	leftSidebarRenderedWidth := leftSidebarContentWidth + 2
+	rightSidebarRenderedWidth := rightSidebarContentWidth + 2
+
+	// Calculate Center Column Width
+	// Total Width - App Padding (0) - Sidebars
+	// appStyle has padding (1,0,0,0) -> 0 horizontal padding
+	centerRenderedWidth := m.width - leftSidebarRenderedWidth - rightSidebarRenderedWidth
+
+	// Ensure min width to prevent crashes or weird rendering
+	if centerRenderedWidth < 40 {
+		centerRenderedWidth = 40
+	}
+
 	// --- 1. HEADER ---
 	leftSide := lipgloss.JoinHorizontal(lipgloss.Center,
 		logoStyle.String(),
@@ -192,8 +218,15 @@ func (m model) View() string {
 	rightSide := lipgloss.JoinHorizontal(lipgloss.Center, bellIcon, infoIcon)
 	rightWidth := lipgloss.Width(rightSide)
 
-	availableWidth := m.width - 8
-	targetTotalWidth := availableWidth - leftWidth - rightWidth
+	// Header Container Width calculation
+	// headerContainerStyle has border(2) + padding(2) = 4 extra width
+	// We want the rendered header container to match centerRenderedWidth
+	// So Content Width = centerRenderedWidth - 4
+	headerContentWidth := centerRenderedWidth - 4
+
+	// Search Bar Width Calculation
+	targetTotalWidth := headerContentWidth - leftWidth - rightWidth
+	// searchBaseStyle adds: 2 (padding L/R)
 	searchContentWidth := targetTotalWidth - 2
 	if searchContentWidth < 10 {
 		searchContentWidth = 10
@@ -204,14 +237,11 @@ func (m model) View() string {
 	// Dynamic style for search input
 	var searchInputView string
 	if m.textInput.Focused() {
-		// Pink when focused
 		pinkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
 		m.textInput.TextStyle = pinkStyle
 		m.textInput.PromptStyle = pinkStyle
-		// Use rendered view directly
 		searchInputView = searchBaseStyle.Width(searchContentWidth).Render(m.textInput.View())
 	} else {
-		// Gray when blurred (default)
 		grayStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 		m.textInput.TextStyle = grayStyle
 		m.textInput.PromptStyle = grayStyle
@@ -219,68 +249,107 @@ func (m model) View() string {
 	}
 
 	headerContent := lipgloss.JoinHorizontal(lipgloss.Center, leftSide, searchInputView, rightSide)
-	headerWidth := m.width - 8
-	header := headerContainerStyle.Width(headerWidth).Render(headerContent)
+
+	// Set width on container to ensure it fills space
+	header := headerContainerStyle.Width(headerContentWidth).Render(headerContent)
 
 	// --- 2. STATUS LINE ---
+	// Status line has no border, just content.
+	// Matches centerRenderedWidth.
 	statusLine := statusLineStyle.
-		Width(m.width - 4). // Match full width
+		Width(centerRenderedWidth).
 		Render("MESSAGE-BUFFER")
 
 	// --- 4. BOTTOM MESSAGE INPUT ---
-	// Render prompt and icons separately
-	promptColor := lipgloss.Color("240") // Default gray
-	borderColor := lipgloss.Color("240") // Default gray
+	promptColor := lipgloss.Color("240")
+	borderColor := lipgloss.Color("240")
 	if m.messageInput.Focused() {
-		promptColor = lipgloss.Color("212") // Pink
-		borderColor = lipgloss.Color("212") // Pink
+		promptColor = lipgloss.Color("212")
+		borderColor = lipgloss.Color("212")
 	}
 
 	prompt := lipgloss.NewStyle().Foreground(promptColor).Render("> ")
-	icons := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(" \uee49 \U000F0066") //  󰁦
+	icons := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(" \uee49 \U000F0066")
 
-	// Calculate width for the textarea proper
-	inputWidth := headerWidth - lipgloss.Width(prompt) - lipgloss.Width(icons) - 4
+	// Input Box Width Logic
+	// messageBox rendered width = centerRenderedWidth
+	// messageBox has border(2) + padding(2) = 4 extra width
+	// So Content Available Width = centerRenderedWidth - 4
+	messageBoxContentWidth := centerRenderedWidth - 4
+
+	// Textarea Width = Available - Prompt - Icons
+	// We subtract an extra 2 for safety to prevent wrap
+	inputWidth := messageBoxContentWidth - lipgloss.Width(prompt) - lipgloss.Width(icons) - 2
+	if inputWidth < 1 {
+		inputWidth = 1
+	}
 	m.messageInput.SetWidth(inputWidth)
 
-	// Create a horizontal layout for the message box content
 	inputContent := lipgloss.JoinHorizontal(lipgloss.Top,
 		prompt,
 		m.messageInput.View(),
 		icons,
 	)
 
-	// Apply dynamic border color
 	currentMessageBoxStyle := messageBoxStyle.Copy().BorderForeground(borderColor)
 	messageBox := currentMessageBoxStyle.
-		Width(headerWidth).
+		Width(messageBoxContentWidth). // Sets content width
 		Render(inputContent)
 
 	// --- 3. MAIN CONTENT (Border Box) ---
-	// Calculate available height
 	headerH := lipgloss.Height(header)
 	statusH := lipgloss.Height(statusLine)
 	messageH := lipgloss.Height(messageBox)
 
-	// Total height - Components - App Padding (top 1 + bottom 0 = 1) - Extra Margin (1 from header)
-	// We adjusted App Padding to (1, 2, 0, 2), so total vertical padding is 1.
-	// Header margin top is 1.
-	availableHeight := m.height - headerH - statusH - messageH - 1 - 1
-	if availableHeight < 0 {
-		availableHeight = 0
+	// Total Available Height Calculation
+	// m.height - appPadding Top(1)
+	availableMainHeight := m.height - 1 - headerH - statusH - messageH
+	if availableMainHeight < 0 {
+		availableMainHeight = 0
 	}
 
 	mainContent := mainContentStyle.
-		Width(headerWidth).
-		Height(availableHeight).
+		Width(centerRenderedWidth - 4). // Fix: Match Header content width (center - 4)
+		Height(availableMainHeight).
 		Render("")
 
-	// --- COMBINE ALL ---
-	finalView := lipgloss.JoinVertical(lipgloss.Left,
+	// Compose Center Column
+	centerColumn := lipgloss.JoinVertical(lipgloss.Left,
 		header,
 		statusLine,
 		mainContent,
 		messageBox,
+	)
+
+	// --- SIDEBARS ---
+	// Calculate sidebar height
+	// Should match center column height OR full available height.
+	// Center column total height = headerH + statusH + mainH + messageH
+	// Since mainH fills space, Total = m.height - 1.
+	sidebarHeight := m.height - 1
+
+	// But sidebars have MarginTop(1).
+	// So Content Height = Total - Margin(1) - Border(2) = Total - 3.
+	sidebarContentHeight := sidebarHeight - 3
+	if sidebarContentHeight < 0 {
+		sidebarContentHeight = 0
+	}
+
+	leftSidebar := leftSidebarStyle.
+		Width(leftSidebarContentWidth).
+		Height(sidebarContentHeight).
+		Render("")
+
+	rightSidebar := rightSidebarStyle.
+		Width(rightSidebarContentWidth).
+		Height(sidebarContentHeight).
+		Render("")
+
+	// --- COMBINE COLUMNS ---
+	finalView := lipgloss.JoinHorizontal(lipgloss.Top,
+		leftSidebar,
+		centerColumn,
+		rightSidebar,
 	)
 
 	return appStyle.Render(finalView)
