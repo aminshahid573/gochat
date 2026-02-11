@@ -1,7 +1,8 @@
-# Run the TUI
+#  Gochat
 
+## Developement
 ```bash
-git clone https://github.com/aminshahid573/table.git
+git clone https://github.com/aminshahid573/gochat.git
 cd table
 ```
 
@@ -9,8 +10,17 @@ cd table
 go mod tidy
 ```
 
+
 ```bash
-go run main.go
+make build
+make run
 ```
+
+```bash
+go build -o bin/gochat .
+./bin/gochat
+```
+---
+(❁´◡`❁)
 
 
